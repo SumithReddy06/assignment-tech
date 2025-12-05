@@ -38,7 +38,8 @@ const ConversationSchema = new mongoose.Schema({
     timestamp: Date,
     traceId: String,
     visualizations: [{
-      type: String
+      type: String,
+      data: mongoose.Schema.Types.Mixed
     }]
   }],
   visualizations: [{

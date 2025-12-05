@@ -36,15 +36,23 @@ const ConversationAnalysis = () => {
     return newId;
   });
   const [currentConversationId, setCurrentConversationId] = useState(null);
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      role: 'assistant',
-      content: `Welcome to ReviewChat Analytics! I'm your AI assistant for analyzing Amazon product reviews.\n\nI can help you with:\n• NPS curve analysis and trends\n• Customer satisfaction metrics\n• Sentiment analysis (happy/unhappy customers)\n• Product rating comparisons\n• Detailed insights on rating patterns\n\nWhat would you like to analyze today?`,
-      timestamp: new Date('2025-12-03T11:30:00'),
-      traceId: 'trace_001_init'
+  
+  const defaultWelcomeMessage = {
+    id: 1,
+    role: 'assistant',
+    content: `Welcome to ReviewChat Analytics! I'm your AI assistant for analyzing Amazon product reviews.\n\nI can help you with:\n• NPS curve analysis and trends\n• Customer satisfaction metrics\n• Sentiment analysis (happy/unhappy customers)\n• Product rating comparisons\n• Detailed insights on rating patterns\n\nWhat would you like to analyze today?`,
+    timestamp: new Date('2025-12-03T11:30:00'),
+    traceId: 'trace_001_init'
+  };
+
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = localStorage.getItem('conversationMessages');
+      return saved ? JSON.parse(saved) : [defaultWelcomeMessage];
+    } catch (error) {
+      return [defaultWelcomeMessage];
     }
-  ]);
+  });
 
   const [visualizations, setVisualizations] = useState(() => {
     try {
