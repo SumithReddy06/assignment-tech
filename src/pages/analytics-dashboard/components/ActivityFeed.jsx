@@ -46,38 +46,40 @@ const ActivityFeed = ({ activities }) => {
   };
 
   return (
-    <div className="bg-card rounded-lg border border-border p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-foreground">Recent Activity</h3>
-        <Icon name="Activity" size={20} color="var(--color-primary)" />
+    <div className="bg-card rounded-lg border border-border h-full flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-border/50 flex-shrink-0">
+        <h3 className="text-sm font-semibold text-foreground">Recent Activity</h3>
+        <Icon name="Activity" size={16} className="text-primary" />
       </div>
-      <div className="space-y-4 max-h-96 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto">
         {activities?.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <Icon name="Clock" size={48} className="mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No recent activity</p>
+          <div className="flex flex-col items-center justify-center h-full py-6 text-muted-foreground px-4">
+            <Icon name="Clock" size={32} className="mb-2 opacity-40" />
+            <p className="text-xs text-center">No recent activity</p>
           </div>
         ) : (
-          activities?.map((activity) => (
-            <div key={activity?.id} className="flex items-start gap-3">
-              <div 
-                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `rgba(var(--color-${getActivityColor(activity?.type)}), 0.1)` }}
-              >
-                <Icon 
-                  name={getActivityIcon(activity?.type)} 
-                  size={16} 
-                  color={`var(--color-${getActivityColor(activity?.type)})`}
-                />
+          <div className="divide-y divide-border/50">
+            {activities?.map((activity) => (
+              <div key={activity?.id} className="flex items-start gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
+                <div 
+                  className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+                  style={{ backgroundColor: `rgba(var(--color-${getActivityColor(activity?.type)}), 0.1)` }}
+                >
+                  <Icon 
+                    name={getActivityIcon(activity?.type)} 
+                    size={14} 
+                    className={`text-${getActivityColor(activity?.type)}`}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-foreground line-clamp-2">{activity?.description}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {formatTimestamp(activity?.timestamp)}
+                  </p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-foreground">{activity?.description}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {formatTimestamp(activity?.timestamp)}
-                </p>
-              </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </div>
     </div>

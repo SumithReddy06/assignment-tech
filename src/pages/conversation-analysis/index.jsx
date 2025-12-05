@@ -12,8 +12,9 @@ import { loadDataset } from '../../utils/datasetLoader';
 import { initializeDatasetService, streamDatasetAnalysis, getDataset } from '../../utils/datasetAnalysisService';
 import { 
   getRecentConversations, 
-  searchConversations 
-} from '../../utils/localDB';
+  searchConversations,
+  saveFullConversationThread
+} from '../../utils/mongoDBService';
 import {
   filterDatasetRecords,
   calculateNPS,
@@ -27,6 +28,14 @@ import {
 const ConversationAnalysis = () => {
   const location = useLocation();
   const [userRole] = useState(localStorage.getItem('userRole') || 'Analyst');
+  const [sessionId] = useState(() => {
+    const saved = localStorage.getItem('currentSessionId');
+    if (saved) return saved;
+    const newId = `session_${Date.now()}`;
+    localStorage.setItem('currentSessionId', newId);
+    return newId;
+  });
+  const [currentConversationId, setCurrentConversationId] = useState(null);
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -53,6 +62,43 @@ const ConversationAnalysis = () => {
   useEffect(() => {
     localStorage.setItem('conversationVisualizations', JSON.stringify(visualizations));
   }, [visualizations]);
+
+  // Save messages to localStorage whenever they change (for sidebar to read)
+  useEffect(() => {
+    localStorage.setItem('conversationMessages', JSON.stringify(messages));
+    // Dispatch custom event for real-time sidebar update
+    window.dispatchEvent(new CustomEvent('messagesUpdated', { detail: { count: messages.length } }));
+  }, [messages]);
+
+  // Save full conversation thread to MongoDB (debounced to avoid too many requests)
+  useEffect(() => {
+    const saveTimer = setTimeout(async () => {
+      if (messages.length > 1) { // Only save if there are messages beyond welcome message
+        try {
+          const firstUserMsg = messages.find(m => m.role === 'user');
+          const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant');
+          
+          if (firstUserMsg && lastAssistantMsg) {
+            console.log('💾 Auto-saving conversation thread to MongoDB...');
+            const result = await saveFullConversationThread(
+              messages,
+              visualizations,
+              firstUserMsg.content.substring(0, 100),
+              lastAssistantMsg.content.substring(0, 200),
+              'Analysis'
+            );
+            if (result?.id) {
+              setCurrentConversationId(result.id);
+            }
+          }
+        } catch (error) {
+          console.error('Error auto-saving conversation:', error);
+        }
+      }
+    }, 3000); // Save 3 seconds after last message change
+
+    return () => clearTimeout(saveTimer);
+  }, [messages, visualizations]);
 
   // Load passed conversation on mount
   useEffect(() => {
@@ -81,7 +127,7 @@ const ConversationAnalysis = () => {
 
         // Check if conversation was passed via navigation
         if (location?.state?.conversationId) {
-          const allConversations = getRecentConversations(100);
+          const allConversations = await getRecentConversations(100);
           const passedConv = allConversations.find(c => c.id === location?.state?.conversationId);
           
           if (passedConv) {
@@ -311,13 +357,25 @@ const ConversationAnalysis = () => {
         const allEmpty = newVisualizations.every(v => sumValues(v?.data) <= 0);
 
         console.log('📊 Visualizations created:', newVisualizations);
+        console.log('📊 Sum values per viz:', newVisualizations.map(v => ({
+          type: v.type,
+          dataLength: v.data?.length,
+          sum: sumValues(v.data),
+          data: v.data
+        })));
         console.log('Data structure:', JSON.stringify(newVisualizations[0], null, 2));
+        console.log('All empty?', allEmpty);
 
         if (allEmpty) {
-          console.warn('Visualization data is empty (all zero values) - not setting visualizations to avoid rendering issues');
+          console.warn('⚠️ Visualization data is empty (all zero values) - not setting visualizations');
+          // Still set visualizations even if empty so user knows analysis ran
+          setVisualizations(newVisualizations);
         } else {
+          console.log('✅ Setting visualizations with data');
           setVisualizations(newVisualizations);
         }
+      } else {
+        console.log('ℹ️ No visualizations generated for this query');
       }
 
     } catch (error) {
@@ -446,7 +504,7 @@ const ConversationAnalysis = () => {
             {/* Conversation Panel - 2/3 width */}
             <div className="lg:col-span-2 flex flex-col bg-card rounded-2xl border border-border/50 overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300">
               {/* Header */}
-              <div className="px-6 py-4 border-b border-border/30 bg-gradient-to-r from-primary/5 to-accent/5">
+              <div className="px-5 py-3 border-b border-border/50 bg-gradient-to-r from-primary/5 to-accent/5 flex-shrink-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-3 h-3 rounded-full bg-success animate-pulse shadow-lg shadow-success/50" />
@@ -456,15 +514,15 @@ const ConversationAnalysis = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs px-3 py-1 rounded-full font-medium bg-muted text-foreground border border-border/50">
+                    <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-muted text-foreground border border-border/50">
                       {isProcessing ? '⏳ Processing' : '✓ Ready'}
                     </span>
                   </div>
                 </div>
               </div>
-              
+
               {/* Messages */}
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-hidden min-h-0">
                 <ConversationThread 
                   messages={messages} 
                   onExportMessage={handleExportMessage}
@@ -472,16 +530,18 @@ const ConversationAnalysis = () => {
               </div>
               
               {/* Input */}
-              <QueryInput 
-                onSendQuery={handleSendQuery}
-                isProcessing={isProcessing}
-                suggestedQueries={suggestedQueries}
-              />
+              <div className="border-t border-border/50 flex-shrink-0">
+                <QueryInput 
+                  onSendQuery={handleSendQuery}
+                  isProcessing={isProcessing}
+                  suggestedQueries={suggestedQueries}
+                />
+              </div>
             </div>
 
             {/* Visualization Panel - 1/3 width */}
             <div className="flex flex-col bg-card rounded-2xl border border-border/50 overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300">
-              <div className="px-6 py-4 border-b border-border/30 bg-gradient-to-r from-accent/5 to-secondary/5">
+              <div className="px-5 py-3 border-b border-border/50 bg-gradient-to-r from-accent/5 to-secondary/5 flex-shrink-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
@@ -495,10 +555,12 @@ const ConversationAnalysis = () => {
                 </div>
               </div>
               
-              <VisualizationPanel 
-                visualizations={visualizations}
-                onExportVisualization={handleExportVisualization}
-              />
+              <div className="flex-1 overflow-hidden min-h-0">
+                <VisualizationPanel 
+                  visualizations={visualizations}
+                  onExportVisualization={handleExportVisualization}
+                />
+              </div>
             </div>
           </div>
         </div>

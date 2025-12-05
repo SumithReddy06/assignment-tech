@@ -16,7 +16,7 @@ import {
   addConversation, 
   getRecentActivities, 
   addActivity 
-} from '../../utils/localDB';
+} from '../../utils/mongoDBService';
 
 const AnalyticsDashboard = () => {
   const navigate = useNavigate();
@@ -37,13 +37,19 @@ const AnalyticsDashboard = () => {
     }
   }, [navigate]);
 
-  // Load conversations and activities from localStorage
+  // Load conversations and activities from MongoDB
   useEffect(() => {
-    const loadStoredData = () => {
-      const storedConversations = getRecentConversations(50);
-      const storedActivities = getRecentActivities(50);
-      setConversations(storedConversations);
-      setActivities(storedActivities);
+    const loadStoredData = async () => {
+      try {
+        const storedConversations = await getRecentConversations(50);
+        const storedActivities = await getRecentActivities(50);
+        console.log('📥 Loaded conversations from MongoDB:', storedConversations?.length, storedConversations);
+        console.log('📥 Loaded activities from MongoDB:', storedActivities?.length, storedActivities);
+        setConversations(storedConversations || []);
+        setActivities(storedActivities || []);
+      } catch (error) {
+        console.error('Error loading data from MongoDB:', error);
+      }
     };
 
     loadStoredData();
@@ -164,72 +170,102 @@ const AnalyticsDashboard = () => {
       // Use dataset-specific analysis if dataset is ready
       const result = await analyzeDatasetWithText(query);
       
-      // Save to localStorage
-      addConversation(
+      // Save to MongoDB
+      await addConversation(
         query,
         result.response || result.error,
         "Dataset Analysis"
       );
       
       // Add activity
-      addActivity('analysis', `Completed analysis on: ${query.substring(0, 50)}...`, {
+      await addActivity('analysis', `Completed analysis on: ${query.substring(0, 50)}...`, {
         category: 'Dataset Analysis'
       });
       
       // Reload conversations to show new entry
-      setConversations(getRecentConversations(50));
-      setActivities(getRecentActivities(50));
+      const freshConversations = await getRecentConversations(50);
+      const freshActivities = await getRecentActivities(50);
+      setConversations(freshConversations);
+      setActivities(freshActivities);
       
     } catch (error) {
       console.error('Error processing query:', error);
       
-      // Save error to localStorage
-      addConversation(
+      // Save error to MongoDB
+      await addConversation(
         query,
         `Error: ${error?.message || 'Failed to process your query. Please try again.'}`,
         "Error"
       );
       
       // Add activity
-      addActivity('error', `Query failed: ${error?.message || 'Unknown error'}`, {
+      await addActivity('error', `Query failed: ${error?.message || 'Unknown error'}`, {
         query: query
       });
       
-      setConversations(getRecentConversations(50));
-      setActivities(getRecentActivities(50));
+      const freshConversations = await getRecentConversations(50);
+      const freshActivities = await getRecentActivities(50);
+      setConversations(freshConversations);
+      setActivities(freshActivities);
       
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleQuickAction = (query, actionId) => {
+  const handleQuickAction = async (query, actionId) => {
     try {
+      setIsProcessing(true);
+      console.log('🚀 Quick action triggered:', { actionId, query });
+      
       if (actionId) {
         // Get hardcoded response for this quick action
         const actionResponse = getQuickActionResponse(actionId, userRole);
+        console.log('📝 Action response:', actionResponse);
         
-        // Save to localStorage
-        addConversation(
+        // Save to MongoDB
+        const saveResult = await addConversation(
           query,
           actionResponse.response,
           actionResponse.category
         );
+        console.log('💾 Conversation saved:', saveResult);
+        
+        if (!saveResult) {
+          console.error('Failed to save conversation to MongoDB');
+          throw new Error('Failed to save conversation');
+        }
         
         // Add activity
-        addActivity('quick_action', `Executed quick action: ${actionId}`, {
+        const activityResult = await addActivity('quick_action', `Executed quick action: ${actionId}`, {
           actionId: actionId,
           category: actionResponse.category
         });
+        console.log('📊 Activity logged:', activityResult);
+        
+        // Wait a moment for MongoDB to persist data
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // Reload conversations to show new entry
-        setConversations(getRecentConversations(50));
-        setActivities(getRecentActivities(50));
+        const freshConversations = await getRecentConversations(50);
+        const freshActivities = await getRecentActivities(50);
+        console.log('✅ Quick action completed successfully!');
+        console.log('🔄 Reloaded conversations:', freshConversations?.length, freshConversations);
+        console.log('🔄 Reloaded activities:', freshActivities?.length, freshActivities);
+        
+        if (freshConversations && freshConversations.length > 0) {
+          setConversations(freshConversations);
+        }
+        if (freshActivities && freshActivities.length > 0) {
+          setActivities(freshActivities);
+        }
       } else {
-        handleSubmitQuery(query);
+        await handleSubmitQuery(query);
       }
     } catch (error) {
-      console.error('Quick action error:', error);
+      console.error('❌ Quick action error:', error);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -284,7 +320,7 @@ const AnalyticsDashboard = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[500px]">
             <ConversationHistory 
               conversations={conversations}
               onSelectConversation={handleSelectConversation}

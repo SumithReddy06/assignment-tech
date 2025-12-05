@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        pre { background: #f0f0f0; padding: 10px; overflow: auto; }
+        button { padding: 10px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <h1>API Test</h1>
+    
+    <button onclick="testGetConversations()">Test Get Conversations</button>
+    <button onclick="testAddConversation()">Test Add Conversation</button>
+    <button onclick="testGetActivities()">Test Get Activities</button>
+    
+    <h2>Results:</h2>
+    <pre id="results">Loading...</pre>
+
+    <script>
+        const API_URL = 'http://localhost:5000/api';
+
+        function log(msg) {
+            document.getElementById('results').textContent += msg + '\n';
+        }
+
+        async function testGetConversations() {
+            try {
+                log('Testing GET /conversations/recent/5...');
+                const res = await fetch(`${API_URL}/conversations/recent/5`);
+                const data = await res.json();
+                log(`✅ Success: ${data.length} conversations found\n`);
+                log(JSON.stringify(data, null, 2));
+            } catch (e) {
+                log(`❌ Error: ${e.message}\n`);
+            }
+        }
+
+        async function testAddConversation() {
+            try {
+                log('Testing POST /conversations...');
+                const res = await fetch(`${API_URL}/conversations`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: 'Test query from HTML',
+                        response: 'Test response',
+                        category: 'Test',
+                        userRole: 'Analyst'
+                    })
+                });
+                const data = await res.json();
+                log(`✅ Success: ${data._id}\n`);
+                log(JSON.stringify(data, null, 2));
+            } catch (e) {
+                log(`❌ Error: ${e.message}\n`);
+            }
+        }
+
+        async function testGetActivities() {
+            try {
+                log('Testing GET /activities/recent/5...');
+                const res = await fetch(`${API_URL}/activities/recent/5`);
+                const data = await res.json();
+                log(`✅ Success: ${data.length} activities found\n`);
+                log(JSON.stringify(data, null, 2));
+            } catch (e) {
+                log(`❌ Error: ${e.message}\n`);
+            }
+        }
+
+        // Auto-test on load
+        window.onload = () => {
+            document.getElementById('results').textContent = '';
+            testGetConversations();
+        };
+    </script>
+</body>
+</html>

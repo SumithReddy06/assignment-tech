@@ -53,12 +53,12 @@ const RoleBasedNavigationFilter = ({ items, userRole }) => {
 };
 
 const ConversationStateIndicator = ({ isActive, conversationCount }) => {
-  if (!isActive) return null;
+  if (!isActive || conversationCount === 0) return null;
 
   return (
-    <span className={`conversation-indicator ${conversationCount > 0 ? '' : 'processing'}`}>
+    <span className={`conversation-indicator`} title={`${conversationCount} messages`}>
       <Icon name="MessageSquare" size={12} />
-      {conversationCount > 0 ? conversationCount : 'Processing'}
+      <span className="text-xs font-semibold">{conversationCount}</span>
     </span>
   );
 };
@@ -69,7 +69,39 @@ const NavigationSidebar = ({ userRole = null }) => {
   const { isCollapsed, isMobileOpen, toggleSidebar, closeMobileSidebar } = useSidebar();
   const [activeConversation, setActiveConversation] = useState(false);
   const [conversationCount, setConversationCount] = useState(0);
+  const [messages, setMessages] = useState([]);
 
+  // Load messages from localStorage to get real-time count
+  useEffect(() => {
+    const loadMessageCount = () => {
+      try {
+        const messagesData = localStorage.getItem('conversationMessages');
+        if (messagesData) {
+          const parsedMessages = JSON.parse(messagesData);
+          setMessages(parsedMessages);
+          if (location?.pathname === '/conversation-analysis') {
+            setConversationCount(parsedMessages.length || 0);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading message count:', error);
+      }
+    };
+
+    loadMessageCount();
+    
+    // Listen for custom event from conversation analysis page
+    window.addEventListener('messagesUpdated', loadMessageCount);
+    // Also listen for storage changes
+    window.addEventListener('storage', loadMessageCount);
+    
+    return () => {
+      window.removeEventListener('messagesUpdated', loadMessageCount);
+      window.removeEventListener('storage', loadMessageCount);
+    };
+  }, [location?.pathname]);
+
+  // Handle logout
   const handleLogout = () => {
     // Clear authentication data
     localStorage.removeItem('isAuthenticated');
@@ -123,19 +155,6 @@ const NavigationSidebar = ({ userRole = null }) => {
   ];
 
   const filteredItems = RoleBasedNavigationFilter({ items: navigationItems, userRole: effectiveRole });
-
-  useEffect(() => {
-    if (location?.pathname === '/conversation-analysis') {
-      setActiveConversation(true);
-      const timer = setTimeout(() => {
-        setConversationCount(3);
-      }, 2000);
-      return () => clearTimeout(timer);
-    } else {
-      setActiveConversation(false);
-      setConversationCount(0);
-    }
-  }, [location?.pathname]);
 
   const handleQuickAction = () => {
     closeMobileSidebar();
